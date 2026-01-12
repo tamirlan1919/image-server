@@ -12,12 +12,14 @@ def setup_logging():
     log_format = '[%(asctime)s] %(levelname)s: %(message)s'
     date_format = '%Y-%m-%d %H:%M:%S'
 
+    log_file = os.path.join(Config.LOGS_DIR, 'app.log')
+
     logging.basicConfig(
         level=logging.INFO,
         format=log_format,
         datefmt=date_format,
         handlers=[
-            logging.FileHandler(Config.LOGS_DIR, encoding='utf-8'),
+            logging.FileHandler(log_file, encoding='utf-8'),
             logging.StreamHandler()
         ]
     )
