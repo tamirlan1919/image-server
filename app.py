@@ -6,7 +6,8 @@ from datetime import datetime
 import uuid
 import json
 from io import BytesIO
-
+from email import policy
+from email.parser import BytesParser
 
 HOST = 'localhost'
 PORT = 8000
@@ -122,35 +123,34 @@ def parse_multipart_form_data(content_type, body):
     Возвращает (filename, file_content) или (None, None) при ошибке
     """
     try:
-        if 'boundary=' not in content_type:
+        if 'multipart/form-data' not in content_type:
             return None, None
-        
-        boundary = content_type.split('boundary=')[1].strip()
-        boundary_bytes = f'--{boundary}'.encode()
 
-        parts = body.split(boundary_bytes)
+        headers = f'Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n'.encode()
+        msg = BytesParser(policy=policy.default).parsebytes(headers + body)
 
-        for part in parts:
-            if b'Content-Disposition' in part:
-                disposition_line = 'Content-Disposition: form-data; name="file"; filename="IMAGE_6068.GPG"'
-                if 'filename' in disposition_line:
-                    #Парсим имя файла
+        if not msg.is_multipart():
+            return None, None
 
-                    filename_start = disposition_line.find('filename="') + 10
-                    filename_end = disposition_line.find('"', filename_start)
-                    filename = disposition_line[filename_start:filename_end]
+        for part in msg.iter_parts():
+            if part.get_content_disposition() != 'form-data':
+                continue
+            if part.get_param('name', header='content-disposition') != 'file':
+                continue
 
-                    #Извлекаем содержимое файла
-                    content_start = part.find(b'\r\n\r\n') + 4
-                    content_end = part.rfind(b'\r\n')
-                    file_content = part[content_start, content_end]
+            filename = part.get_filename()
+            if not filename:
+                continue
 
-                    return filename, file_content
+            file_content = part.get_payload(decode=True)
+            return filename, file_content
+
         return None, None
     except Exception as e:
         log_error(f'Ошибка парсинга multipart: {e}')
         return None, None
-    
+
+
 
 def save_file(filename, file_content):
     try:
@@ -210,7 +210,7 @@ class ImageServerHandler(BaseHTTPRequestHandler):
                 self.send_error_reponse(400, 'Файл не найден в запросе')
                 return
             
-            is_valid, error_message = validate_file(filename, file_content)
+            is_valid, error_message = validate_file(filename, len(file_content))
             if not is_valid:
                 self.log(f'Валидация не пройдена {error_message}')
                 self.send_error_reponse(400, error_message)
